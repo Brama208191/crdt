@@ -1,0 +1,9 @@
+node_modules/
+dist/
+target/
+server/src/main/resources/static/
+.idea/
+*.iml
+.vscode/
+.DS_Store
+.env

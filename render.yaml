@@ -1,0 +1,14 @@
+# Render Blueprint: one Docker web service. The database lives on Neon (free, doesn't expire).
+services:
+  - type: web
+    name: crdt-editor
+    runtime: docker
+    plan: free
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_USER
+        sync: false
+      - key: DATABASE_PASSWORD
+        sync: false

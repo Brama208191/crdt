@@ -1,0 +1,31 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: crdt
+      POSTGRES_USER: crdt
+      POSTGRES_PASSWORD: crdt
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crdt"]
+      interval: 2s
+      retries: 20
+
+  app:
+    build: .
+    profiles: ["full"]
+    environment:
+      DATABASE_URL: jdbc:postgresql://db:5432/crdt
+      DATABASE_USER: crdt
+      DATABASE_PASSWORD: crdt
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
