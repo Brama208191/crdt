@@ -47,6 +47,8 @@ button:disabled { opacity: 0.4; cursor: default; }
 button.primary { background: var(--yellow); border-color: var(--yellow); color: var(--board); }
 button.primary:hover:not(:disabled) { background: #f7df85; }
 button.light { background: var(--chalk); border-color: var(--chalk); color: var(--board); }
+button.danger { border-color: var(--pink); color: var(--pink); }
+button.danger:hover:not(:disabled) { background: var(--pink); color: var(--board); }
 
 input {
   font: inherit;
@@ -119,6 +121,7 @@ a.lesson-row:hover { color: var(--chalk); }
 
 .history { overflow-y: auto; padding: 1.5rem 1.25rem 4rem; border-left: 1px solid var(--line); }
 .history-head { display: flex; justify-content: space-between; align-items: center; }
+.history-actions { display: flex; gap: 0.5rem; }
 .history h2 { font-size: 1.5rem; margin: 0; }
 .versions { list-style: none; padding: 0; margin: 1rem 0; display: flex; flex-direction: column; gap: 0.5rem; }
 .version { width: 100%; min-height: 0; padding: 0.7rem 1rem; text-align: left; display: flex; flex-direction: column; gap: 0.15rem; font-weight: 400; background: var(--panel); border: 1px solid transparent; border-radius: 14px; }

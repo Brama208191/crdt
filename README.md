@@ -20,6 +20,8 @@ sequencer, and no last-write-wins data loss.
 - Large pastes are sent in chunks
 - Abuse limits for a public demo: 100k characters per document, 20 new documents per IP per hour
 - Version history with preview and one-click restore
+- The creator of a document (or the site admin) can delete it or clear its history; clearing also
+  erases the letters of deleted text, so it can't be recovered
 - Crash recovery from periodic snapshots plus the op log
 
 ## Architecture
@@ -65,6 +67,22 @@ shared broker (e.g. Redis/RabbitMQ relay) and a sticky owner per document.
 - Loading a document after a restart = latest snapshot + replay the ops after it.
 - **Restore** never rewrites history. It emits ordinary ops that turn the current text into the old
   version, so connected clients merge it like any other edit, and the restore itself becomes a new version.
+- **Clear history** compacts the log into one snapshot of the current state. Tombstones must stay,
+  because concurrent ops may still point at their ids, but their letters are overwritten, so deleted
+  text is gone from the state, the log and the snapshots. Every id and the visible text are unchanged,
+  so open tabs keep editing without a reload.
+
+## Who can delete
+
+There are no accounts, so ownership rides on cookies the page itself can't read:
+
+- Creating a document sets an `HttpOnly`, `SameSite=Strict` cookie holding a random 256-bit token.
+  The database stores only its SHA-256. That browser can delete the document or clear its history.
+- The site admin signs in at `#/admin`. The server knows only a salted PBKDF2-SHA256 hash of the
+  password (600,000 rounds), and the session cookie holds an HMAC derived from that hash, never the
+  password. Sign-in is capped at 5 attempts per IP and 30 site-wide per 15 minutes.
+- Every write is checked on the server; the buttons are only hidden for convenience. Writes sent
+  from another site are rejected by both the `SameSite` cookies and an `Origin` check.
 
 ## Testing
 
@@ -72,7 +90,8 @@ shared broker (e.g. Redis/RabbitMQ relay) and a sticky owner per document.
 |---|---|
 | [`RgaTest`](server/src/test/java/dev/crdt/editor/crdt/RgaTest.java) | Concurrent inserts and deletes, out-of-order delivery, idempotency, snapshot round-trip |
 | [`ConvergenceFuzzTest`](server/src/test/java/dev/crdt/editor/crdt/ConvergenceFuzzTest.java) | 5 replicas × 2,000 random edits over a network that reorders and duplicates messages all end up identical (5 seeds) |
-| [`DocumentServiceIntegrationTest`](server/src/test/java/dev/crdt/editor/document/DocumentServiceIntegrationTest.java) | Real Postgres via Testcontainers: crash recovery, duplicate filtering, restore |
+| [`DocumentServiceIntegrationTest`](server/src/test/java/dev/crdt/editor/document/DocumentServiceIntegrationTest.java) | Real Postgres via Testcontainers: crash recovery, duplicate filtering, restore, clear history (erased text stays erased), delete |
+| [`DocumentAccessIntegrationTest`](server/src/test/java/dev/crdt/editor/document/DocumentAccessIntegrationTest.java) | Over real HTTP: only the creator or admin can delete or clear, cookies are HttpOnly with no secret in the body, forged admin cookies and cross-site writes are refused, password guessing is rate limited |
 | [`rga.test.ts`](client/src/crdt/rga.test.ts) | The TypeScript replica passes the same convergence fuzz test, plus cursor anchoring |
 
 ```bash

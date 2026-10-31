@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { AdminPage } from './AdminPage';
 import { EditorPage } from './EditorPage';
 import { Home } from './Home';
 
@@ -55,7 +56,7 @@ export default function App() {
           maxLength={30}
         />
       </div>
-      {docId ? <EditorPage key={docId} docId={docId} me={me} /> : <Home />}
+      {docId ? <EditorPage key={docId} docId={docId} me={me} /> : hash === '#/admin' ? <AdminPage /> : <Home />}
     </>
   );
 }

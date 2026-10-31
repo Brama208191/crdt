@@ -7,6 +7,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.BatchPreparedStatementSetter;
@@ -27,8 +28,39 @@ class DocumentRepository {
         this.template = template;
     }
 
-    void create(UUID id, String title) {
-        jdbc.sql("insert into documents (id, title) values (?, ?)").params(id, title).update();
+    void create(UUID id, String title, String ownerKeyHash) {
+        jdbc.sql("insert into documents (id, title, owner_key_hash) values (?, ?, ?)")
+                .params(id, title, ownerKeyHash).update();
+    }
+
+    /** Null when the document has no owner; throws if the document doesn't exist. */
+    String findOwnerKeyHash(UUID id) {
+        return jdbc.sql("select owner_key_hash from documents where id = ?").param(id)
+                .query((rs, i) -> Optional.ofNullable(rs.getString(1)))
+                .optional()
+                .orElseThrow(() -> new NoSuchElementException("document " + id))
+                .orElse(null);
+    }
+
+    boolean delete(UUID id) {
+        return jdbc.sql("delete from documents where id = ?").param(id).update() == 1;
+    }
+
+    long historyStart(UUID id) {
+        return jdbc.sql("select history_start from documents where id = ?").param(id)
+                .query(Long.class).optional().orElse(0L);
+    }
+
+    /**
+     * Drops every op and snapshot up to {@code seq} and keeps one snapshot of the full state there,
+     * so the document loads exactly as before and its history starts over.
+     */
+    void compact(UUID docId, long seq, String state, String content) {
+        jdbc.sql("delete from snapshots where doc_id = ? and seq <= ?").params(docId, seq).update();
+        jdbc.sql("delete from operations where doc_id = ? and seq <= ?").params(docId, seq).update();
+        jdbc.sql("insert into snapshots (doc_id, seq, state, content) values (?, ?, ?, ?)")
+                .params(docId, seq, state, content).update();
+        jdbc.sql("update documents set history_start = ? where id = ?").params(seq, docId).update();
     }
 
     Optional<String> findTitle(UUID id) {
@@ -44,8 +76,10 @@ class DocumentRepository {
     }
 
     long maxSeq(UUID docId) {
-        return jdbc.sql("select coalesce(max(seq), 0) from operations where doc_id = ?")
-                .param(docId).query(Long.class).single();
+        // After a history clear the log can be empty while the document is not, so history_start counts too.
+        return jdbc.sql("select greatest(coalesce((select max(seq) from operations where doc_id = ?), 0), "
+                        + "coalesce((select history_start from documents where id = ?), 0))")
+                .params(docId, docId).query(Long.class).single();
     }
 
     void appendOps(UUID docId, long firstSeq, List<Op> ops) {

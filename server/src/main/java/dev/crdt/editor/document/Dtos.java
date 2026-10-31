@@ -55,6 +55,13 @@ public final class Dtos {
 
     public record CreateDocument(String title) {}
 
+    /** Whether the caller's cookies allow deleting the document and clearing its history. */
+    public record Access(boolean canManage) {}
+
+    public record AdminSignIn(String password) {}
+
+    public record AdminStatus(boolean enabled, boolean signedIn) {}
+
     public record Version(long seq, OffsetDateTime createdAt, String preview) {}
 
     public record VersionContent(long seq, String content) {}

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createEditor } from 'slate';
 import { withHistory } from 'slate-history';
 import { Editable, Slate, withReact } from 'slate-react';
-import type { Participant } from './api';
+import { api, type Participant } from './api';
 import type { Id } from './crdt/rga';
 import { HistoryPanel } from './HistoryPanel';
 import { SiteBar } from './SiteBar';
@@ -28,6 +28,8 @@ export function EditorPage({ docId, me }: Props) {
   const [showHistory, setShowHistory] = useState(false);
   const [copied, setCopied] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [canManage, setCanManage] = useState(false);
+  const [deleted, setDeleted] = useState(false);
 
   const rememberCursor = useCallback(() => {
     const rga = session.current?.rga;
@@ -57,10 +59,21 @@ export function EditorPage({ docId, me }: Props) {
       onPresence: setPeople,
       onStatus: setStatus,
       onTitle: setTitle,
+      onDeleted: () => {
+        setDeleted(true);
+        s.dispose();
+      },
     });
     session.current = s;
     return () => s.dispose();
   }, [docId, me, editor, rememberCursor]);
+
+  useEffect(() => {
+    api
+      .access(docId)
+      .then((a) => setCanManage(a.canManage))
+      .catch(() => setCanManage(false));
+  }, [docId]);
 
   const handleChange = () => {
     const s = session.current;
@@ -80,11 +93,37 @@ export function EditorPage({ docId, me }: Props) {
     rememberCursor();
   };
 
+  const remove = async () => {
+    if (!confirm(`Delete "${title}" for everyone? This can't be undone.`)) return;
+    try {
+      await api.deleteDoc(docId);
+      location.hash = '#/';
+    } catch (e) {
+      setNotice(String(e).includes(': 403') ? "This browser isn't allowed to delete this document." : 'Delete failed. Please try again.');
+    }
+  };
+
   const copyLink = async () => {
     await navigator.clipboard.writeText(location.href);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
+
+  if (deleted) {
+    return (
+      <>
+        <SiteBar />
+        <div className="page">
+          <section className="hero">
+            <h1>This document was deleted or never existed.</h1>
+            <p>
+              <a href="#/">Back to all documents →</a>
+            </p>
+          </section>
+        </div>
+      </>
+    );
+  }
 
   return (
     <div className="workspace">
@@ -95,6 +134,11 @@ export function EditorPage({ docId, me }: Props) {
             <button className={showHistory ? 'light' : ''} onClick={() => setShowHistory((v) => !v)}>
               History
             </button>
+            {canManage && (
+              <button className="danger" onClick={remove}>
+                Delete
+              </button>
+            )}
           </>
         }
       />
@@ -131,7 +175,7 @@ export function EditorPage({ docId, me }: Props) {
             </Slate>
           </div>
         </main>
-        {showHistory && <HistoryPanel docId={docId} />}
+        {showHistory && <HistoryPanel docId={docId} canManage={canManage} />}
       </div>
     </div>
   );

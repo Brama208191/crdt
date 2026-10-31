@@ -13,6 +13,8 @@ export interface SessionEvents {
   onPresence(people: Participant[]): void;
   onStatus(status: Status): void;
   onTitle(title: string): void;
+  /** The document was deleted while open. */
+  onDeleted(): void;
 }
 
 /**
@@ -92,6 +94,7 @@ export class DocSession {
         this.events.onRemoteChange();
       }),
       this.client.subscribe(`/topic/doc/${this.docId}/presence`, (msg) => this.events.onPresence(JSON.parse(msg.body))),
+      this.client.subscribe(`/topic/doc/${this.docId}/deleted`, () => this.events.onDeleted()),
     ];
 
     try {
@@ -109,8 +112,10 @@ export class DocSession {
       this.client.publish({ destination: `/app/doc/${this.docId}/join`, body: JSON.stringify(this.me) });
       this.events.onStatus('online');
       this.flush();
-    } catch {
-      this.events.onStatus('offline');
+    } catch (e) {
+      // A 404 here means the document was deleted while this tab was disconnected.
+      if (String(e).includes(': 404')) this.events.onDeleted();
+      else this.events.onStatus('offline');
     }
   }
 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, type Version } from './api';
 
-export function HistoryPanel({ docId }: { docId: string }) {
+export function HistoryPanel({ docId, canManage }: { docId: string; canManage: boolean }) {
   const [versions, setVersions] = useState<Version[] | null>(null);
   const [selected, setSelected] = useState<{ seq: number; content: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -26,11 +26,41 @@ export function HistoryPanel({ docId }: { docId: string }) {
     void refresh();
   };
 
+  const clear = async () => {
+    if (
+      !confirm(
+        'Clear all saved versions? The current text stays, but older versions and deleted text are erased for good.',
+      )
+    )
+      return;
+    try {
+      await api.clearHistory(docId);
+      setSelected(null);
+      setError(null);
+      void refresh();
+    } catch (e) {
+      setError(
+        String(e).includes(': 409')
+          ? 'Edits are still arriving. Try again in a moment.'
+          : String(e).includes(': 403')
+            ? "This browser isn't allowed to clear this history."
+            : 'Clearing history failed. Please try again.',
+      );
+    }
+  };
+
   return (
     <aside className="history">
       <div className="history-head">
         <h2>History</h2>
-        <button onClick={refresh}>Refresh</button>
+        <div className="history-actions">
+          <button onClick={refresh}>Refresh</button>
+          {canManage && (
+            <button className="danger" onClick={clear}>
+              Clear
+            </button>
+          )}
+        </div>
       </div>
       <p className="muted small">A snapshot is saved every 50 edits.</p>
       {error && <p className="notice bad">{error}</p>}

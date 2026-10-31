@@ -5,9 +5,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.UUID;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -24,20 +26,52 @@ class DocumentController {
     private final DocumentService service;
     private final SimpMessagingTemplate broker;
     private final CreationRateLimiter rateLimiter;
+    private final DocumentAccess access;
 
-    DocumentController(DocumentService service, SimpMessagingTemplate broker, CreationRateLimiter rateLimiter) {
+    DocumentController(DocumentService service, SimpMessagingTemplate broker, CreationRateLimiter rateLimiter,
+                       DocumentAccess access) {
         this.service = service;
         this.broker = broker;
         this.rateLimiter = rateLimiter;
+        this.access = access;
     }
 
+    /** The owner token goes out only as an HttpOnly cookie, never in the body. */
     @PostMapping
     ResponseEntity<Map<String, Object>> create(@RequestBody Dtos.CreateDocument request, HttpServletRequest http) {
         if (!rateLimiter.tryAcquire(http.getRemoteAddr())) {
             return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
                     .body(Map.of("error", "Too many new documents; try again later."));
         }
-        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("id", service.create(request.title())));
+        String token = access.ownerToken(http);
+        UUID id = service.create(request.title(), DocumentAccess.sha256Hex(token));
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .header(HttpHeaders.SET_COOKIE, access.ownerCookie(token, http).toString())
+                .body(Map.of("id", id));
+    }
+
+    @GetMapping("/{id}/access")
+    Dtos.Access access(@PathVariable UUID id, HttpServletRequest http) {
+        return new Dtos.Access(access.canManage(id, http));
+    }
+
+    @DeleteMapping("/{id}")
+    ResponseEntity<Void> delete(@PathVariable UUID id, HttpServletRequest http) {
+        if (!access.canManage(id, http)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        service.delete(id);
+        broker.convertAndSend(SyncController.topic(id) + "/deleted", (Object) Map.of("id", id));
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/{id}/versions")
+    ResponseEntity<Void> clearHistory(@PathVariable UUID id, HttpServletRequest http) {
+        if (!access.canManage(id, http)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        service.clearHistory(id);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping
@@ -68,6 +102,12 @@ class DocumentController {
             broker.convertAndSend(SyncController.topic(id),
                     new Dtos.OpBatch("server", ops.stream().map(Dtos.OpDto::from).toList()));
         }
+    }
+
+    @ExceptionHandler(IllegalStateException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    Map<String, String> conflict(IllegalStateException e) {
+        return Map.of("error", e.getMessage());
     }
 
     @ExceptionHandler(NoSuchElementException.class)

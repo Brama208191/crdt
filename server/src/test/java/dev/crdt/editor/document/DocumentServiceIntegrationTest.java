@@ -8,6 +8,7 @@ import dev.crdt.editor.crdt.Op;
 import dev.crdt.editor.crdt.Rga;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -78,5 +79,68 @@ class DocumentServiceIntegrationTest {
         assertThat(alice.text()).isEqualTo("a".repeat(DocumentService.SNAPSHOT_EVERY));
         service.evict(id);
         assertThat(service.textAt(id, Long.MAX_VALUE)).isEqualTo(alice.text());
+    }
+
+    @Test
+    void clearingHistoryKeepsTheTextAndLetsEditingContinue() {
+        UUID id = service.create("clear me");
+        Rga alice = new Rga("alice");
+        // Separate batches, so there are older versions than the current one.
+        service.applyRemote(id, alice.insert(0, "a".repeat(DocumentService.SNAPSHOT_EVERY)));
+        service.applyRemote(id, alice.insert(0, "b".repeat(DocumentService.SNAPSHOT_EVERY)));
+        service.applyRemote(id, alice.insert(0, "c".repeat(7)));
+        long oldVersion = service.versions(id).getLast().seq();
+        assertThat(service.versions(id)).hasSizeGreaterThan(1);
+
+        service.clearHistory(id);
+
+        assertThat(service.versions(id)).hasSize(1);
+        assertThatThrownBy(() -> service.textAt(id, oldVersion)).isInstanceOf(NoSuchElementException.class);
+
+        // A client that never noticed the clear keeps editing against the same CRDT state.
+        service.applyRemote(id, alice.insert(0, "b"));
+        service.evict(id);
+        assertThat(service.textAt(id, Long.MAX_VALUE)).isEqualTo(alice.text());
+        assertThat(service.applyRemote(id, alice.insert(1, "c"))).hasSize(1);
+    }
+
+    @Test
+    void clearingHistoryErasesTheLettersOfDeletedText() {
+        UUID id = service.create("secret");
+        Rga alice = new Rga("alice");
+        List<Op> typed = alice.insert(0, "public SECRET");
+        service.applyRemote(id, typed);
+        service.applyRemote(id, alice.delete(6, 7));
+
+        service.clearHistory(id);
+
+        assertThat(service.textAt(id, Long.MAX_VALUE)).isEqualTo("public");
+        for (var snapshotState : List.of(service.state(id), stateAfterRestart(id))) {
+            assertThat(snapshotState.nodes()).hasSize(13);
+            assertThat(snapshotState.nodes().stream().filter(Dtos.NodeDto::d).map(Dtos.NodeDto::v))
+                    .containsOnly(DocumentService.ERASED);
+        }
+        // A client resending its original typing cannot bring the letters back.
+        assertThat(service.applyRemote(id, typed)).isEmpty();
+        assertThat(service.state(id).nodes().stream().map(Dtos.NodeDto::v).reduce("", String::concat))
+                .doesNotContain("SECRET");
+    }
+
+    private Dtos.DocumentState stateAfterRestart(UUID id) {
+        service.evict(id);
+        return service.state(id);
+    }
+
+    @Test
+    void deletingRemovesTheDocumentAndItsHistory() {
+        UUID id = service.create("delete me");
+        service.applyRemote(id, new Rga("alice").insert(0, "x".repeat(DocumentService.SNAPSHOT_EVERY)));
+
+        service.delete(id);
+
+        assertThatThrownBy(() -> service.state(id)).isInstanceOf(NoSuchElementException.class);
+        assertThat(service.versions(id)).isEmpty();
+        assertThat(service.list()).noneMatch(d -> d.id().equals(id));
+        assertThatThrownBy(() -> service.delete(id)).isInstanceOf(NoSuchElementException.class);
     }
 }

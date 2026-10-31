@@ -63,6 +63,22 @@ Railway puts a service to sleep only when it has sent no outbound traffic for a 
 
 **Waking up:** the first visit after a sleep starts the JVM, which takes a few seconds. That first request can briefly get a 502 from Railway's proxy. Reloading fixes it, and the client reconnects its WebSocket on its own.
 
+## The admin password
+
+The creator of a document can always delete it or clear its history from the browser that made it. To manage every document, including ones made before this feature, set up an admin password:
+
+1. On your computer, in the repository folder, run:
+
+   ```bash
+   python deploy/admin-hash.py --generate
+   ```
+
+   It prints a new random password once (save it in a password manager) and a line starting with `ADMIN_KEY_HASH=pbkdf2-sha256:`. To pick your own password instead (16 characters or more), run it without `--generate`.
+2. In Railway, open the app service, then **Variables, New Variable**. Name: `ADMIN_KEY_HASH`. Value: everything after the `=`. Deploy the change.
+3. Open `https://<your domain>/#/admin` and sign in. The browser keeps you signed in for 30 days.
+
+Only the hash is stored, in Railway; the app never stores or logs the password. If someone saw the variable, the 600,000 PBKDF2 rounds and a random salt make guessing a long password impractical. To change the password, or sign everyone out, make a new hash and replace the variable. Removing the variable turns admin sign-in off.
+
 ## Security headers
 
 Every response carries a Content Security Policy (scripts only from the app itself, fonts from Google Fonts), HSTS, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, a referrer policy and a permissions policy. See [`SecurityHeadersFilter.java`](../server/src/main/java/dev/crdt/editor/SecurityHeadersFilter.java).
@@ -74,6 +90,7 @@ Every response carries a Content Security Policy (scripts only from the app itse
 | Logs | App service, **Deployments**, then the latest deployment's logs |
 | Roll back | **Deployments**, then **Redeploy** on an earlier deployment |
 | Look at the data | `Postgres` service, **Data** tab |
+| Delete or clean up any document | Sign in at `#/admin`, open the document, use **Delete** or **History, Clear** |
 | Cost so far this month | Workspace, **Usage** |
 
 ## Trying the production image locally

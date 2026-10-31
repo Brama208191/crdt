@@ -25,8 +25,11 @@ public class DocumentService {
     static final int MAX_BATCH = 10_000;
     private static final String SERVER_SITE = "server";
 
+    /** What a deleted character's letter becomes once history is cleared. */
+    static final String ERASED = " ";
+
     private static final class LiveDoc {
-        final Rga rga;
+        Rga rga;
         long seq;
         long lastSnapshotSeq;
 
@@ -47,10 +50,54 @@ public class DocumentService {
     }
 
     public UUID create(String title) {
+        return create(title, null);
+    }
+
+    /** {@code ownerKeyHash} may be null: then only an admin can delete the document. */
+    public UUID create(String title, String ownerKeyHash) {
         UUID id = UUID.randomUUID();
         String clean = title == null || title.isBlank() ? "Untitled" : title.strip();
-        repo.create(id, clean.length() > 100 ? clean.substring(0, 100) : clean);
+        repo.create(id, clean.length() > 100 ? clean.substring(0, 100) : clean, ownerKeyHash);
         return id;
+    }
+
+    /** Removes the document, its op log and its snapshots. */
+    public void delete(UUID id) {
+        LiveDoc doc = live.remove(id);
+        Object lock = doc == null ? new Object() : doc;
+        synchronized (lock) {
+            if (!repo.delete(id)) {
+                throw new NoSuchElementException("document " + id);
+            }
+        }
+    }
+
+    /**
+     * Forgets every saved version but keeps the current text. Deleted characters stay as tombstones,
+     * because concurrent ops may still refer to their ids, but their letters are overwritten, so
+     * erased text can no longer be read from the state, the log or a snapshot. Connected clients are
+     * unaffected: every id and the visible text stay the same.
+     */
+    public void clearHistory(UUID id) {
+        repo.findTitle(id).orElseThrow(() -> new NoSuchElementException("document " + id));
+        LiveDoc doc = load(id);
+        synchronized (doc) {
+            if (doc.seq == 0) {
+                return;
+            }
+            if (doc.rga.pendingCount() > 0) {
+                // Those ops live only in the log being dropped; they'd be lost.
+                throw new IllegalStateException("edits are still arriving; try again in a moment");
+            }
+            List<Rga.NodeState> erased = doc.rga.nodes().stream()
+                    .map(n -> n.deleted() ? new Rga.NodeState(n.id(), ERASED, true) : n)
+                    .toList();
+            Rga compacted = Rga.fromNodes(SERVER_SITE, erased);
+            tx.executeWithoutResult(status ->
+                    repo.compact(id, doc.seq, SnapshotCodec.encode(erased), compacted.text()));
+            doc.rga = compacted;
+            doc.lastSnapshotSeq = doc.seq;
+        }
     }
 
     public List<Dtos.DocumentSummary> list() {
@@ -93,6 +140,9 @@ public class DocumentService {
 
     /** Text of the document as it was right after op {@code seq}. */
     public String textAt(UUID id, long seq) {
+        if (seq < repo.historyStart(id)) {
+            throw new NoSuchElementException("version " + seq + " was cleared");
+        }
         return rebuild(id, seq).text();
     }
 

@@ -18,12 +18,21 @@ class CreationRateLimiter {
 
     private final Map<String, Deque<Instant>> recent = new ConcurrentHashMap<>();
     private final Clock clock;
+    private final int maxPerWindow;
+    private final Duration window;
 
     CreationRateLimiter() {
         this(Clock.systemUTC());
     }
 
     CreationRateLimiter(Clock clock) {
+        this(MAX_PER_WINDOW, WINDOW, clock);
+    }
+
+    /** Also used, with a tighter limit, for admin sign-in attempts. */
+    CreationRateLimiter(int maxPerWindow, Duration window, Clock clock) {
+        this.maxPerWindow = maxPerWindow;
+        this.window = window;
         this.clock = clock;
     }
 
@@ -31,10 +40,10 @@ class CreationRateLimiter {
         Instant now = clock.instant();
         Deque<Instant> times = recent.computeIfAbsent(clientIp, ip -> new ArrayDeque<>());
         synchronized (times) {
-            while (!times.isEmpty() && times.peekFirst().isBefore(now.minus(WINDOW))) {
+            while (!times.isEmpty() && times.peekFirst().isBefore(now.minus(window))) {
                 times.pollFirst();
             }
-            if (times.size() >= MAX_PER_WINDOW) {
+            if (times.size() >= maxPerWindow) {
                 return false;
             }
             times.addLast(now);

@@ -72,4 +72,12 @@ export const api = {
   versions: (id: string) => request<Version[]>(`/api/docs/${id}/versions`),
   version: (id: string, seq: number) => request<{ seq: number; content: string }>(`/api/docs/${id}/versions/${seq}`),
   restore: (id: string, seq: number) => request<void>(`/api/docs/${id}/versions/${seq}/restore`, { method: 'POST' }),
+  // Ownership travels in HttpOnly cookies the page can't read; the server answers yes or no.
+  access: (id: string) => request<{ canManage: boolean }>(`/api/docs/${id}/access`),
+  deleteDoc: (id: string) => request<void>(`/api/docs/${id}`, { method: 'DELETE' }),
+  clearHistory: (id: string) => request<void>(`/api/docs/${id}/versions`, { method: 'DELETE' }),
+  adminStatus: () => request<{ enabled: boolean; signedIn: boolean }>('/api/admin/session'),
+  adminSignIn: (password: string) =>
+    request<void>('/api/admin/session', { method: 'POST', body: JSON.stringify({ password }) }),
+  adminSignOut: () => request<void>('/api/admin/session', { method: 'DELETE' }),
 };
