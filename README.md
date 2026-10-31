@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/Brama208191/crdt/actions/workflows/ci.yml/badge.svg)](https://github.com/Brama208191/crdt/actions/workflows/ci.yml)
 
-**Live demo:** https://YOUR-APP.up.railway.app — open a document in two tabs and type in both.
+**Live demo:** https://crdt-production-39f2.up.railway.app — open a document in two tabs and type in both.
 *(The demo sleeps when nobody is using it, so the first load can take a few seconds.)*
 
 A real-time collaborative text editor built on a **custom RGA (Replicated Growable Array) CRDT**.
