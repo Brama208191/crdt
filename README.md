@@ -1,9 +1,9 @@
 # CRDT Collaborative Editor
 
-[![CI](https://github.com/OWNER/crdt-editor/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/crdt-editor/actions/workflows/ci.yml)
+[![CI](https://github.com/Brama208191/crdt/actions/workflows/ci.yml/badge.svg)](https://github.com/Brama208191/crdt/actions/workflows/ci.yml)
 
-**Live demo:** https://YOUR-APP.onrender.com — open a document in two tabs and type in both.
-*(Free hosting sleeps when idle; the first load can take ~50 seconds.)*
+**Live demo:** https://YOUR-APP.up.railway.app — open a document in two tabs and type in both.
+*(The demo sleeps when nobody is using it, so the first load can take a few seconds.)*
 
 A real-time collaborative text editor built on a **custom RGA (Replicated Growable Array) CRDT**.
 Concurrent edits from any number of users merge deterministically: no locks, no central
@@ -97,13 +97,15 @@ cd server && ./mvnw spring-boot:run     # API on :8080
 cd client && npm install && npm run dev # UI on :5173, proxies to :8080
 ```
 
-## Deploying (free)
+## Deployment
 
-1. Create a free Postgres database on [Neon](https://neon.tech). From its connection string
-   `postgresql://USER:PASSWORD@HOST/DB?sslmode=require`, build:
-   - `DATABASE_URL` = `jdbc:postgresql://HOST/DB?sslmode=require`
-   - `DATABASE_USER` = `USER`
-   - `DATABASE_PASSWORD` = `PASSWORD`
-2. On [Render](https://render.com), choose **New → Blueprint** and select this repo (it reads `render.yaml`).
-   Fill in the three variables.
-3. Flyway creates the tables on first boot.
+Runs on [Railway](https://railway.com) as one Docker container plus a Railway Postgres database,
+for about $1 to $3 a month. The app sleeps when idle and wakes on the next visit. The image runs as
+a non-root user with a capped heap, and every response carries security headers (CSP, HSTS,
+`nosniff`, frame and referrer policies).
+
+The only setting is `DATABASE_URL`, taken from the Railway Postgres service. Flyway creates the
+tables on the first start.
+
+See [docs/deployment.md](docs/deployment.md) for the first-deploy guide, the costs, and how to
+try the production image locally.
