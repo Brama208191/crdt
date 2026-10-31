@@ -13,4 +13,11 @@ case "${DATABASE_URL:-}" in
     ;;
 esac
 
+# On Railway a missing DATABASE_URL would otherwise surface as a long "localhost:5432 refused" trace.
+if [ -z "${DATABASE_URL:-}" ] && [ -n "${RAILWAY_ENVIRONMENT_NAME:-}" ]; then
+  echo "start: DATABASE_URL is not set. Add it on this service as \${{Postgres.DATABASE_URL}}, then deploy." >&2
+  exit 1
+fi
+echo "start: database ${DATABASE_URL:-jdbc:postgresql://localhost:5432/crdt (default)}"
+
 exec java $JAVA_OPTS -jar /app/app.jar
