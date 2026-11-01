@@ -114,6 +114,22 @@ class DocumentAccessIntegrationTest {
     }
 
     @Test
+    @DirtiesContext(methodMode = DirtiesContext.MethodMode.AFTER_METHOD)
+    void aClientWritingItsOwnForwardedForCannotDodgeTheLimit() throws Exception {
+        List<Integer> codes = new ArrayList<>();
+        for (int i = 0; i <= AdminController.MAX_ATTEMPTS; i++) {
+            HttpRequest request = HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/admin/session"))
+                    .header("Content-Type", "application/json")
+                    .header("X-Real-IP", "203.0.113.88")
+                    .header("X-Forwarded-For", "198.51.100." + (i + 1))
+                    .POST(HttpRequest.BodyPublishers.ofString("{\"password\":\"guess\"}"))
+                    .build();
+            codes.add(http.send(request, HttpResponse.BodyHandlers.ofString()).statusCode());
+        }
+        assertThat(codes.getLast()).isEqualTo(429);
+    }
+
+    @Test
     void writesFromAnotherSiteAreRejectedEvenWithTheOwnerCookie() throws Exception {
         HttpResponse<String> created = send("POST", "/api/docs", "{\"title\":\"mine\"}", null);
         String id = id(created);
@@ -162,7 +178,7 @@ class DocumentAccessIntegrationTest {
             request.header("Cookie", cookie);
         }
         if (forwardedFor != null) {
-            request.header("X-Forwarded-For", forwardedFor);
+            request.header("X-Real-IP", forwardedFor);
         }
         if (origin != null) {
             request.header("Origin", origin);
